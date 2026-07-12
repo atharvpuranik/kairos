@@ -1,0 +1,53 @@
+# Self-hosting Kairos
+
+The whole stack runs from one `docker compose up`: FastAPI API, eval worker,
+Next.js dashboard, Redis (+ SRH, an Upstash-compatible REST proxy, so the same
+code runs identically against local Redis and Upstash cloud).
+
+**The one external dependency is Supabase** (Postgres + Auth). Use a free
+cloud project or a self-hosted Supabase — either works.
+
+## 1. Prepare Supabase (10 min)
+
+1. Create a project at supabase.com (free tier is fine).
+2. In the SQL editor, run the migrations in order from
+   `apps/api/db/migrations/`: `0001` … `0004`. Run `0003` (pg_cron jobs) as
+   its own execution; if it errors, enable the `pg_cron` extension in
+   *Database → Extensions* first and re-run it.
+3. Grab from *Settings → API*: the project URL, the `service_role` key, and
+   the `anon` key.
+
+## 2. Configure and start
+
+```bash
+cp .env.selfhost.example .env    # fill in Supabase keys + Anthropic API key
+docker compose up --build
+```
+
+- Dashboard: http://localhost:3000 (sign up with email/password)
+- API: http://localhost:8000 (OpenAPI docs at /docs)
+
+The worker polls for pending traces and scores them with Claude Haiku using
+your `ANTHROPIC_API_KEY` (~$0.002–0.004 per trace; tune per-pipeline
+`eval_sample_rate` and the `EVAL_DAILY_CAP_PER_USER` env var to bound spend).
+
+## 3. Validate (optional, 2 min)
+
+```bash
+./scripts/validate-selfhost.sh
+```
+
+Builds, boots, and smoke-tests the stack end to end (API health, dashboard,
+the API↔Redis auth path, worker liveness).
+
+## Notes
+
+- **Secrets never enter images**: `.dockerignore` excludes `.env*` from both
+  build contexts; configuration is injected at runtime (dashboard
+  `NEXT_PUBLIC_*` values are build args, as required by Next.js).
+- Data lives in your Supabase project. Trace retention (30-day purge) and
+  nightly health rollups run inside Postgres via pg_cron — they work the same
+  self-hosted.
+- To use Upstash instead of the bundled Redis, set
+  `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` on the `api` and
+  `worker` services and drop the `redis`/`srh` services.

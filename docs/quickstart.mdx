@@ -1,0 +1,77 @@
+# Quickstart — zero to first scored trace in 5 minutes
+
+## 1. Create an account and pipeline (1 min)
+
+Sign up at the dashboard, then **Pipelines → Create pipeline** (pick your framework).
+Copy the pipeline ID from the table.
+
+## 2. Create an API key (30 s)
+
+**Settings → API keys → Create key.** Copy the `kai_live_…` key now — it's shown once.
+
+## 3. Install the SDK (30 s)
+
+```bash
+pip install kairoslabs                 # any retriever
+pip install "kairoslabs[langchain]"    # + LangChain integration
+```
+
+## 4. Add tracing (1 min)
+
+**Any custom retriever:**
+
+```python
+from kairos import KairosTracer
+
+tracer = KairosTracer(api_key="kai_live_xxxx", pipeline_id="<pipeline-id>")
+
+with tracer.trace(query=user_query) as t:
+    chunks = retriever.retrieve(user_query)     # your code, unchanged
+    t.log_retrieval(chunks)
+    answer = llm.generate(chunks, user_query)   # your code, unchanged
+    t.log_answer(answer)
+```
+
+Or wrap the retriever once and only log the answer:
+
+```python
+retriever = tracer.wrap(your_retriever)
+with tracer.trace(query=q) as t:
+    chunks = retriever(q)          # retrieval logged automatically
+    t.log_answer(llm.generate(chunks, q))
+```
+
+**LangChain** — pass the handler at invoke time (constructor-level callbacks
+don't propagate to retriever/LLM runs in current LangChain versions):
+
+```python
+from kairos.integrations.langchain import KairosCallbackHandler
+
+handler = KairosCallbackHandler(api_key="kai_live_xxxx", pipeline_id="<pipeline-id>")
+chain.invoke({"query": question}, config={"callbacks": [handler]})
+```
+
+Environment variables `KAIROS_API_KEY` and `KAIROS_PIPELINE_ID` work too.
+
+## 5. Run your pipeline (2 min)
+
+Send a few queries through it. Traces are batched and flushed every ~2 s in the
+background; short-lived scripts flush automatically at exit (or call
+`tracer.client.flush()`).
+
+Open **Traces** in the dashboard — your queries appear with `pending` status,
+then flip to `completed` as Claude Haiku scores them: faithfulness, answer
+relevance, context precision, hallucination detection, and a root-cause
+category when something scored low.
+
+That's it. Health scores accumulate nightly per pipeline, and degradation
+alerts fire automatically once you have a week of baseline.
+
+## Notes
+
+- The SDK never raises into your code and never blocks your pipeline — network
+  failures are logged and dropped.
+- Free tier: 10,000 traces/month, 30-day retention, per-key rate limit of
+  120 requests/min (each batched request can carry up to 100 traces).
+- Eval sampling is configurable per pipeline (`eval_sample_rate`) if you have
+  more volume than you need scored.

@@ -1,0 +1,51 @@
+services:
+  api:
+    build: ./apps/api
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # The API speaks Upstash's REST protocol; SRH translates it to the local
+      # Redis so self-hosting needs no Upstash account.
+      - UPSTASH_REDIS_REST_URL=http://srh:80
+      - UPSTASH_REDIS_REST_TOKEN=${SRH_TOKEN:-kairos-selfhost-token}
+    depends_on:
+      - srh
+
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      args:
+        # NEXT_PUBLIC_* values are baked in at build time
+        - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+        - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+
+  redis:
+    image: redis:7-alpine
+
+  # Upstash-compatible REST facade over the local Redis (open source, by Upstash)
+  srh:
+    image: hiett/serverless-redis-http:latest
+    environment:
+      - SRH_MODE=env
+      - SRH_TOKEN=${SRH_TOKEN:-kairos-selfhost-token}
+      - SRH_CONNECTION_STRING=redis://redis:6379
+    depends_on:
+      - redis
+
+  worker:
+    build: ./apps/api
+    command: python -m workers.eval_worker
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - UPSTASH_REDIS_REST_URL=http://srh:80
+      - UPSTASH_REDIS_REST_TOKEN=${SRH_TOKEN:-kairos-selfhost-token}
+    depends_on:
+      - srh

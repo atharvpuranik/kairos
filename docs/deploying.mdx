@@ -1,0 +1,47 @@
+# Deploying Kairos (cloud)
+
+Free-tier deploy: Railway (API + worker), Vercel (dashboard), Supabase
+(Postgres + Auth), Upstash (Redis). ~20 minutes.
+
+## 0. Prerequisites
+
+- Supabase project with migrations `0001`–`0004` applied (SQL editor, in order;
+  `0003` needs the pg_cron extension enabled).
+- Upstash Redis database (free tier) — note the REST URL + token.
+- Anthropic API key with credits.
+
+## 1. Railway — API + worker (two services, one repo)
+
+1. New project → Deploy from GitHub repo → set **root directory `apps/api`**.
+   `railway.toml` provides the Dockerfile build and start command
+   (`uvicorn main:app --host 0.0.0.0 --port $PORT`, healthcheck `/health`).
+2. Set environment variables:
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTASH_REDIS_REST_URL`,
+   `UPSTASH_REDIS_REST_TOKEN`, `ANTHROPIC_API_KEY`,
+   `FRONTEND_URL=https://<your-vercel-domain>` (CORS), `APP_ENV=production`.
+3. Add a **second service** from the same repo (root `apps/api`), same
+   variables, and override the start command to `python -m workers.eval_worker`.
+   No public networking needed for the worker.
+4. Note the API service's public URL.
+
+## 2. Vercel — dashboard
+
+1. Import the repo → set **root directory `apps/dashboard`** (Next.js preset).
+2. Environment variables:
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `NEXT_PUBLIC_API_URL=https://<railway-api-url>`.
+3. Deploy. Then set the Railway `FRONTEND_URL` to the Vercel production URL
+   (exact origin, no trailing slash) and redeploy the API so CORS matches.
+
+## 3. Supabase auth settings
+
+Under Authentication → URL configuration set the Site URL to the Vercel
+domain (used in confirmation-email links).
+
+## 4. Smoke test
+
+- `curl https://<railway-api-url>/health` → `{"status":"ok"}`
+- Sign up on the Vercel dashboard, create a pipeline + API key.
+- `POST /v1/traces` with the key → 202, trace appears in the dashboard,
+  and (with worker running + Anthropic credits) flips to `completed` with
+  scores within ~10 s.

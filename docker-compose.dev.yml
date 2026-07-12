@@ -1,0 +1,11 @@
+# TODO — local development overrides (hot reload, volume mounts). Not implemented yet.
+# Not needed until Week 1 Docker Compose validation pass (see ARCHITECTURE.md launch checklist).
+version: '3.8'
+services:
+  api:
+    build: ./apps/api
+    volumes:
+      - ./apps/api:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"

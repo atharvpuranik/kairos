@@ -1,0 +1,48 @@
+# Python SDK reference (`kairoslabs`)
+
+## KairosTracer
+
+```python
+KairosTracer(api_key=None, api_url=None, pipeline_id=None)
+```
+Reads `KAIROS_API_KEY`, `KAIROS_API_URL`, `KAIROS_PIPELINE_ID` from the
+environment when arguments are omitted. Raises `ValueError` if no API key is
+available.
+
+### tracer.trace(query, pipeline_id=None) → context manager
+
+Yields a `TraceContext`:
+
+- `t.log_retrieval(chunks, reranked=False)` — chunks as
+  `[{content, score, doc_id, metadata?}]` (or `RetrievedChunk` models).
+- `t.log_answer(answer: str)`
+- `t.set_metadata(dict)`
+
+The trace is submitted on clean exit **only if** both retrieval and an answer
+were logged; an exception inside the block propagates and nothing is sent.
+
+### tracer.wrap(retriever) → callable
+
+Wraps a callable / `.retrieve()` / `.get_relevant_documents()` / `.invoke()`
+retriever. Inside an active `tracer.trace(...)` block, its results are logged
+automatically (LangChain-style Documents, dicts, `(content, score)` tuples and
+strings are normalized). Outside a trace block it just passes through.
+
+## KairosCallbackHandler (`kairos.integrations.langchain`)
+
+```python
+handler = KairosCallbackHandler(api_key=..., pipeline_id=..., api_url=...)
+chain.invoke({"query": q}, config={"callbacks": [handler]})
+```
+
+Pass at **invoke time** — chain-constructor callbacks don't propagate to
+retriever/LLM sub-runs in current LangChain versions, so nothing would be
+captured. Requires `pip install "kairoslabs[langchain]"`.
+
+## Delivery semantics
+
+Traces are buffered in memory and flushed as batches (`POST /v1/traces/batch`)
+every 2 s, or immediately at 20 buffered traces. The buffer is bounded
+(1,000): when full, new traces are **dropped with a warning** — tracing never
+blocks and never raises into your code. An `atexit` hook flushes on shutdown;
+call `tracer.client.flush(timeout=5)` to force delivery manually.

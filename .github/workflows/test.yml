@@ -1,0 +1,74 @@
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  sdk:
+    name: Python SDK unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install SDK + test deps
+        working-directory: packages/sdk-python
+        run: |
+          pip install -e ".[langchain]" pytest pytest-asyncio respx \
+            "langchain==0.3.30" "langchain-core==0.3.86"
+      - name: Run unit tests
+        working-directory: packages/sdk-python
+        run: pytest -q
+
+  api:
+    name: API compile + import check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install requirements
+        working-directory: apps/api
+        run: pip install -r requirements.txt
+      - name: Compile all modules
+        working-directory: apps/api
+        run: python -m compileall -q .
+      - name: App imports and routes register (dummy env)
+        working-directory: apps/api
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: dummy
+          UPSTASH_REDIS_REST_URL: https://example.upstash.io
+          UPSTASH_REDIS_REST_TOKEN: dummy
+        run: |
+          python -c "
+          import main
+          routes = {r.path for r in main.app.routes}
+          assert '/v1/traces' in routes and '/v1/traces/batch' in routes and '/v1/keys' in routes
+          print('routes OK:', sorted(r for r in routes if r.startswith('/v1')))
+          "
+
+  dashboard:
+    name: Dashboard production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
+      - name: Install
+        working-directory: apps/dashboard
+        run: npm ci
+      - name: Build (dummy public env — values are baked at build time)
+        working-directory: apps/dashboard
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: npm run build

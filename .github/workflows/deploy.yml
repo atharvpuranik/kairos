@@ -1,0 +1,16 @@
+# Deploys are handled by platform-native GitHub integrations rather than
+# Actions (simpler + free):
+#   - Railway: two services (api, eval-worker) auto-deploy from main via the
+#     Railway GitHub app. See docs/deploying.mdx.
+#   - Vercel: the dashboard auto-deploys from main via the Vercel GitHub app
+#     (root directory apps/dashboard).
+# This workflow exists as a placeholder should Actions-based deploys become
+# necessary (e.g., self-hosted runners or artifact publishing).
+name: deploy
+on:
+  workflow_dispatch:
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Deploys run via Railway/Vercel GitHub integrations — see docs/deploying.mdx"

@@ -1,0 +1,32 @@
+# Concepts
+
+**Trace** — one RAG query: the user's question, the retrieved chunks, the
+final answer, latency and token counts. Sent by the SDK, stored 30 days.
+
+**Eval scores** — computed asynchronously per trace by Claude Haiku:
+
+- *Faithfulness (0–1)*: does the answer only contain information present in
+  the retrieved chunks?
+- *Answer relevance (0–1)*: does the answer address what was asked?
+- *Context precision (0–1)*: what fraction of retrieved chunks actually
+  contributed?
+- *Hallucination flag + detail*: set when faithfulness is low **and** the
+  answer makes specific claims no chunk supports — with the claim quoted.
+- *Failure category*: when any score is below 0.7, the root cause —
+  `chunking`, `embedding`, `reranking`, `prompt`, or `model`.
+
+Scores carry `model_used` and `prompt_version` so they stay comparable as the
+eval prompt evolves.
+
+**Pipeline health score (0–100)** — nightly per pipeline:
+`((faithfulness×0.35) + (relevance×0.35) + (precision×0.30)) × 100`, stored as
+daily snapshots that power the health chart and week-over-week alerting.
+
+**Alerts** — created by the worker when the last 24h degrades against your
+7-day baseline: faithfulness drop >15% (warning; >30% critical) or a
+hallucination-rate spike (>20% and 3× baseline). Deduped while unresolved;
+resolve from the dashboard.
+
+**Eval status** — every trace is `pending` → `completed`, `skipped`
+(sampled out by the pipeline's `eval_sample_rate` or the daily cap), or
+`failed` (after bounded retries).
